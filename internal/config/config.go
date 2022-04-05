@@ -22,6 +22,12 @@ var (
 
 	// DBLogMode 是否打印数据库日志
 	DBLogMode = false
+
+	DBHost string
+	DBPort int
+	DBUser string
+	DBPass string
+	DBName string
 )
 
 const (
@@ -39,6 +45,16 @@ func GetString(key string) string {
 	var value string
 	if viper.IsSet(key) {
 		value = viper.GetString(key)
+	}
+
+	return value
+}
+
+// GetInt get int config value by key
+func GetInt(key string) int {
+	var value int
+	if viper.IsSet(key) {
+		value = viper.GetInt(key)
 	}
 
 	return value

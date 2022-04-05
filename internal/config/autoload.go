@@ -49,9 +49,15 @@ func init() {
 		DBLogMode = viper.GetBool("log.db_log")
 	}
 
-	if viper.IsSet("dl.user_agent") {
-		UserAgent = viper.GetString("dl.user_agent")
+	if viper.IsSet("user_agent") {
+		UserAgent = viper.GetString("user_agent")
 	}
+
+	DBHost = GetString("pgsql.host")
+	DBPort = GetInt("pgsql.port")
+	DBUser = GetString("pgsql.user")
+	DBPass = GetString("pgsql.password")
+	DBName = GetString("pgsql.dbname")
 }
 
 func isInTests() bool {
