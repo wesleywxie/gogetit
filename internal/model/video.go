@@ -1,18 +1,17 @@
 package model
 
-import "time"
+import "github.com/jinzhu/gorm"
 
 type Video struct {
+	gorm.Model
 	UID         string
 	Duration    string
 	Director    string
 	Publisher   string
 	Series      string
-	Category    []string
-	Actress     []string
-	Actors      []string
+	Categories  string
+	Actors      string
 	Torrents    []Torrent
 	PublishedAt string
 	Source      string
-	CrawledAt   time.Time
 }

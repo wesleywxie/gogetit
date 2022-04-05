@@ -17,6 +17,9 @@ func init() {
 }
 
 func main() {
+	model.InitDB()
+	defer model.Disconnect()
+
 	url := "https://javdb.com/censored"
 	items := []model.Item{}
 	count := 0
@@ -92,14 +95,9 @@ func main() {
 			case "系列:":
 				temp.Series = el.ChildText("span")
 			case "類別:":
-				categories := strings.Split(el.ChildText("span"), ",")
-				temp.Category = make([]string, len(categories))
-				for i, category := range categories {
-					temp.Category[i] = strings.TrimSpace(category)
-				}
+				temp.Categories = el.ChildText("span")
 			case "演員:":
-				//TODO how to extract male and female
-				temp.Actress = strings.Fields(el.ChildText("span"))
+				temp.Actors = el.ChildText("span")
 			}
 		})
 
@@ -117,11 +115,14 @@ func main() {
 				}
 			}
 			t.PublishedAt = el.ChildText(".time")
+			t.CreatedAt = time.Now()
+			t.UpdatedAt = time.Now()
 			temp.Torrents = append(temp.Torrents, t)
 		})
 
 		temp.Source = "JavDB"
-		temp.CrawledAt = time.Now()
+		temp.CreatedAt = time.Now()
+		temp.UpdatedAt = time.Now()
 		videos = append(videos, temp)
 	})
 
