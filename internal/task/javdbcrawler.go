@@ -1,7 +1,6 @@
 package task
 
 import (
-	"encoding/json"
 	"fmt"
 	"github.com/gocolly/colly"
 	"github.com/wesleywxie/gogetit/internal/config"
@@ -48,14 +47,12 @@ func (t *JavDBCrawler) Start() {
 	t.isStop.Store(false)
 
 	url := "https://javdb.com/censored"
-	items := []model.Item{}
-	count := 0
 	// Instantiate default collector
 	collector := colly.NewCollector(
 		// Visit only domains: reddit.com
 		colly.AllowedDomains("javdb.com"),
 		colly.MaxDepth(2), // only allow list and detail pages
-		colly.Async(false),
+		colly.Async(true),
 		colly.UserAgent(config.UserAgent),
 		colly.Debugger(&log.Debugger{}),
 	)
@@ -80,14 +77,13 @@ func (t *JavDBCrawler) Start() {
 	detailCollector := collector.Clone()
 
 	collector.OnHTML(".grid-item", func(e *colly.HTMLElement) {
-		temp := model.Item{}
-		temp.UID = e.ChildText(".uid")
-		temp.URL = e.Request.AbsoluteURL(e.ChildAttr("a[class=box]", "href"))
-		temp.CrawledAt = time.Now()
-		items = append(items, temp)
+		UID := e.ChildText(".uid")
+		URL := e.Request.AbsoluteURL(e.ChildAttr("a[class=box]", "href"))
 
-		detailCollector.Visit(temp.URL)
-		detailCollector.Wait()
+		if !model.ExistsVideo(UID) {
+			detailCollector.Visit(URL)
+			detailCollector.Wait()
+		}
 	})
 
 	// Before making a request print "Visiting ..."
@@ -102,39 +98,39 @@ func (t *JavDBCrawler) Start() {
 		zap.S().Errorf("Request URL: %s failed with response: %v\nError:%v", r.Request.URL, r, err)
 	})
 
-	videos := []model.Video{}
-
 	detailCollector.OnHTML(".section .container", func(e *colly.HTMLElement) {
-		temp := model.Video{}
+		video := model.Video{}
 
 		e.ForEach(".video-meta-panel .movie-panel-info .panel-block", func(_ int, el *colly.HTMLElement) {
 			label := strings.TrimSpace(el.ChildText("strong:nth-child(1)"))
 			switch label {
 			case "番號:":
-				temp.UID = el.ChildText("span")
+				video.UID = el.ChildText("span")
 			case "日期:":
-				temp.PublishedAt = el.ChildText("span")
+				video.PublishedAt = el.ChildText("span")
 			case "時長:":
-				temp.Duration = el.ChildText("span")
+				video.Duration = el.ChildText("span")
 			case "導演:":
-				temp.Director = el.ChildText("span")
+				video.Director = el.ChildText("span")
 			case "片商:":
-				temp.Publisher = el.ChildText("span")
+				video.Publisher = el.ChildText("span")
 			case "系列:":
-				temp.Series = el.ChildText("span")
+				video.Series = el.ChildText("span")
 			case "類別:":
-				temp.Categories = el.ChildText("span")
+				video.Categories = el.ChildText("span")
 			case "演員:":
-				temp.Actors = el.ChildText("span")
+				video.Actors = el.ChildText("span")
 			}
 		})
 
-		temp.Torrents = []model.Torrent{}
+		video.Source = "JavDB"
+		video, _ = model.AddVideo(&video)
+
 		reg := regexp.MustCompile(`\((.*?)\)`)
 
 		e.ForEach("#magnets-content > table > tbody > tr", func(_ int, el *colly.HTMLElement) {
 			t := model.Torrent{}
-			t.Magnets = el.ChildAttr(".magnet-name > a", "href")
+			t.Magnet = el.ChildAttr(".magnet-name > a", "href")
 			metas := strings.Split(reg.FindAllString(el.ChildText(".meta"), -1)[0], ",")
 			if len(metas) > 0 {
 				t.Size = strings.TrimSpace(strings.Trim(strings.Trim(metas[0], "("), ")"))
@@ -143,15 +139,10 @@ func (t *JavDBCrawler) Start() {
 				}
 			}
 			t.PublishedAt = el.ChildText(".time")
-			t.CreatedAt = time.Now()
-			t.UpdatedAt = time.Now()
-			temp.Torrents = append(temp.Torrents, t)
+			t.VideoID = video.ID
+			model.AddTorrent(&t)
 		})
 
-		temp.Source = "JavDB"
-		temp.CreatedAt = time.Now()
-		temp.UpdatedAt = time.Now()
-		videos = append(videos, temp)
 	})
 
 	// Before making a request print "Visiting ..."
@@ -159,13 +150,6 @@ func (t *JavDBCrawler) Start() {
 		if t.isStop.Load() == true {
 			r.Abort()
 		}
-
-		count++
-
-		if count > 5 {
-			r.Abort()
-		}
-
 	})
 
 	detailCollector.OnError(func(r *colly.Response, err error) {
@@ -174,8 +158,6 @@ func (t *JavDBCrawler) Start() {
 
 	collector.Visit(url)
 	collector.Wait()
-	jsonData, _ := json.MarshalIndent(videos, "", "  ")
-	zap.S().Debug(string(jsonData))
 }
 
 func makeGetRequest(url string) (content string, err error) {
