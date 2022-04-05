@@ -2,19 +2,24 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
 	"regexp"
 	"strings"
 	"time"
 
 	"github.com/gocolly/colly"
-	"github.com/gocolly/colly/debug"
+	"github.com/wesleywxie/gogetit/internal/log"
 	"github.com/wesleywxie/gogetit/internal/model"
+	"go.uber.org/zap"
 )
+
+func init() {
+	zap.S().Debug("Initialization main module...")
+}
 
 func main() {
 	url := "https://javdb.com/censored"
 	items := []model.Item{}
+	count := 0
 	// Instantiate default collector
 	collector := colly.NewCollector(
 		// Visit only domains: reddit.com
@@ -22,7 +27,7 @@ func main() {
 		colly.MaxDepth(2), // only allow list and detail pages
 		colly.Async(true),
 		colly.UserAgent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/99.0.4844.51 Safari/537.36"),
-		colly.Debugger(&debug.LogDebugger{}),
+		colly.Debugger(&log.Debugger{}),
 	)
 	detailCollector := collector.Clone()
 
@@ -34,8 +39,11 @@ func main() {
 		temp.CrawledAt = time.Now()
 		items = append(items, temp)
 		url := e.Request.AbsoluteURL(e.ChildAttr("a[class=box]", "href"))
-		detailCollector.Visit(url)
-		detailCollector.Wait()
+
+		for ; count < 5; count++ {
+			detailCollector.Visit(url)
+			detailCollector.Wait()
+		}
 	})
 
 	// On every span tag with the class next-button
@@ -53,12 +61,12 @@ func main() {
 
 	// Before making a request print "Visiting ..."
 	collector.OnRequest(func(r *colly.Request) {
-		fmt.Println("Visiting", r.URL.String())
+		zap.S().Debugf("Visiting %s", r.URL.String())
 	})
 
 	// Set error handler
 	collector.OnError(func(r *colly.Response, err error) {
-		fmt.Println("Request URL:", r.Request.URL, "failed with response:", r, "\nError:", err)
+		zap.S().Errorf("Request URL: %s failed with response: %v\nError:%v", r.Request.URL, r, err)
 	})
 
 	videos := []model.Video{}
@@ -132,17 +140,17 @@ func main() {
 
 	// Before making a request print "Visiting ..."
 	detailCollector.OnRequest(func(r *colly.Request) {
-		fmt.Println("Visiting", r.URL.String())
+		zap.S().Debugf("Visiting %s", r.URL.String())
 	})
 
 	// Set error handler
 	detailCollector.OnError(func(r *colly.Response, err error) {
-		fmt.Println("Request URL:", r.Request.URL, "failed with response:", r, "\nError:", err)
+		zap.S().Errorf("Request URL: %s failed with response: %v\nError:%v", r.Request.URL, r, err)
 	})
 
 	collector.Visit(url)
 	collector.Wait()
 	jsonData, _ := json.MarshalIndent(videos, "", "  ")
-	fmt.Println(string(jsonData))
+	zap.S().Debug(string(jsonData))
 
 }
