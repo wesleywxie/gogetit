@@ -9,38 +9,12 @@ import (
 
 	"github.com/gocolly/colly"
 	"github.com/gocolly/colly/debug"
+	"github.com/wesleywxie/gogetit/internal/model"
 )
-
-type item struct {
-	UID       string
-	CrawledAt time.Time
-}
-
-type video struct {
-	UID         string
-	Duration    string
-	Director    string
-	Publisher   string
-	Series      string
-	Category    []string
-	Actress     []string
-	Actors      []string
-	Torrents    []torrent
-	PublishedAt string
-	Source      string
-	CrawledAt   time.Time
-}
-
-type torrent struct {
-	Magnets     string
-	Size        string
-	Num         string
-	PublishedAt string
-}
 
 func main() {
 	url := "https://javdb.com/censored"
-	items := []item{}
+	items := []model.Item{}
 	// Instantiate default collector
 	collector := colly.NewCollector(
 		// Visit only domains: reddit.com
@@ -55,7 +29,7 @@ func main() {
 	// On every a element which has .top-matter attribute call callback
 	// This class is unique to the div that holds all information about a story
 	collector.OnHTML(".grid-item", func(e *colly.HTMLElement) {
-		temp := item{}
+		temp := model.Item{}
 		temp.UID = e.ChildText(".uid")
 		temp.CrawledAt = time.Now()
 		items = append(items, temp)
@@ -87,12 +61,12 @@ func main() {
 		fmt.Println("Request URL:", r.Request.URL, "failed with response:", r, "\nError:", err)
 	})
 
-	videos := []video{}
+	videos := []model.Video{}
 
 	// On every a element which has .top-matter attribute call callback
 	// This class is unique to the div that holds all information about a story
 	detailCollector.OnHTML(".section .container", func(e *colly.HTMLElement) {
-		temp := video{}
+		temp := model.Video{}
 
 		e.ForEach(".video-meta-panel .movie-panel-info .panel-block", func(_ int, el *colly.HTMLElement) {
 			label := strings.TrimSpace(el.ChildText("strong:nth-child(1)"))
@@ -121,11 +95,11 @@ func main() {
 			}
 		})
 
-		temp.Torrents = []torrent{}
+		temp.Torrents = []model.Torrent{}
 		reg := regexp.MustCompile(`\((.*?)\)`)
 
 		e.ForEach("#magnets-content > table > tbody > tr", func(_ int, el *colly.HTMLElement) {
-			t := torrent{}
+			t := model.Torrent{}
 			t.Magnets = el.ChildAttr(".magnet-name > a", "href")
 			metas := strings.Split(reg.FindAllString(el.ChildText(".meta"), -1)[0], ",")
 			if len(metas) > 0 {
