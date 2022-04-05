@@ -2,6 +2,9 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
+	"github.com/gocolly/colly/proxy"
+	"github.com/wesleywxie/gogetit/internal/config"
 	"regexp"
 	"strings"
 	"time"
@@ -33,6 +36,18 @@ func main() {
 		colly.Debugger(&log.Debugger{}),
 	)
 	detailCollector := collector.Clone()
+
+	if config.Socks5 != "" {
+		rp, err := proxy.RoundRobinProxySwitcher(fmt.Sprintf("socks5://%s", config.Socks5))
+		if err != nil {
+			zap.S().Fatalw("Error when initializing proxy",
+				"error", err,
+			)
+		}
+
+		collector.SetProxyFunc(rp)
+		detailCollector.SetProxyFunc(rp)
+	}
 
 	// On every a element which has .top-matter attribute call callback
 	// This class is unique to the div that holds all information about a story
