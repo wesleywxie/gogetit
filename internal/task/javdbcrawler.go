@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/gocolly/colly"
-	"github.com/gocolly/colly/proxy"
 	"github.com/wesleywxie/gogetit/internal/config"
 	"github.com/wesleywxie/gogetit/internal/log"
 	"github.com/wesleywxie/gogetit/internal/model"
@@ -56,44 +55,10 @@ func (t *JavDBCrawler) Start() {
 		// Visit only domains: reddit.com
 		colly.AllowedDomains("javdb.com"),
 		colly.MaxDepth(2), // only allow list and detail pages
-		colly.Async(true),
-		colly.UserAgent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/99.0.4844.51 Safari/537.36"),
+		colly.Async(false),
+		colly.UserAgent(config.UserAgent),
 		colly.Debugger(&log.Debugger{}),
 	)
-
-	if config.Socks5 != "" {
-		rp, err := proxy.RoundRobinProxySwitcher(fmt.Sprintf("socks5://%s", config.Socks5))
-		if err != nil {
-			zap.S().Fatalw("Error when initializing proxy",
-				"error", err,
-			)
-		}
-
-		collector.SetProxyFunc(rp)
-	}
-
-	detailCollector := collector.Clone()
-
-	// On every a element which has .top-matter attribute call callback
-	// This class is unique to the div that holds all information about a story
-	collector.OnHTML(".grid-item", func(e *colly.HTMLElement) {
-		temp := model.Item{}
-		temp.UID = e.ChildText(".uid")
-		temp.URL = e.Request.AbsoluteURL(e.ChildAttr("a[class=box]", "href"))
-		temp.CrawledAt = time.Now()
-		items = append(items, temp)
-
-		for ; count < 5; count++ {
-			detailCollector.Visit(temp.URL)
-			detailCollector.Wait()
-		}
-	})
-
-	// On every span tag with the class next-button
-	//collector.OnHTML("span.next-button", func(h *colly.HTMLElement) {
-	//	t := h.ChildAttr("a", "href")
-	//	collector.Visit(t)
-	//})
 
 	// Set max Parallelism and introduce a Random Delay
 	collector.Limit(&colly.LimitRule{
@@ -102,9 +67,34 @@ func (t *JavDBCrawler) Start() {
 		Delay:       5 * time.Second,
 	})
 
+	if config.Socks5 != "" {
+		err := collector.SetProxy(fmt.Sprintf("socks5://%s", config.Socks5))
+		if err != nil {
+			zap.S().Fatalw("Error when initializing proxy",
+				"error", err,
+			)
+			return
+		}
+	}
+
+	detailCollector := collector.Clone()
+
+	collector.OnHTML(".grid-item", func(e *colly.HTMLElement) {
+		temp := model.Item{}
+		temp.UID = e.ChildText(".uid")
+		temp.URL = e.Request.AbsoluteURL(e.ChildAttr("a[class=box]", "href"))
+		temp.CrawledAt = time.Now()
+		items = append(items, temp)
+
+		detailCollector.Visit(temp.URL)
+		detailCollector.Wait()
+	})
+
 	// Before making a request print "Visiting ..."
 	collector.OnRequest(func(r *colly.Request) {
-		zap.S().Debugf("Visiting %s", r.URL.String())
+		if t.isStop.Load() == true {
+			r.Abort()
+		}
 	})
 
 	// Set error handler
@@ -114,8 +104,6 @@ func (t *JavDBCrawler) Start() {
 
 	videos := []model.Video{}
 
-	// On every a element which has .top-matter attribute call callback
-	// This class is unique to the div that holds all information about a story
 	detailCollector.OnHTML(".section .container", func(e *colly.HTMLElement) {
 		temp := model.Video{}
 
@@ -166,25 +154,20 @@ func (t *JavDBCrawler) Start() {
 		videos = append(videos, temp)
 	})
 
-	// On every span tag with the class next-button
-	//collector.OnHTML("span.next-button", func(h *colly.HTMLElement) {
-	//	t := h.ChildAttr("a", "href")
-	//	collector.Visit(t)
-	//})
-
-	// Set max Parallelism and introduce a Random Delay
-	detailCollector.Limit(&colly.LimitRule{
-		DomainGlob:  "*javdb.*",
-		Parallelism: 1,
-		Delay:       5 * time.Second,
-	})
-
 	// Before making a request print "Visiting ..."
 	detailCollector.OnRequest(func(r *colly.Request) {
-		zap.S().Debugf("Visiting %s", r.URL.String())
+		if t.isStop.Load() == true {
+			r.Abort()
+		}
+
+		count++
+
+		if count > 5 {
+			r.Abort()
+		}
+
 	})
 
-	// Set error handler
 	detailCollector.OnError(func(r *colly.Response, err error) {
 		zap.S().Errorf("Request URL: %s failed with response: %v\nError:%v", r.Request.URL, r, err)
 	})
