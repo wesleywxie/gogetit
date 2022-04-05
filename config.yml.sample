@@ -1,0 +1,13 @@
+socks5: PROXY_FOR_LOCAL_DEVELOPMENT
+log:
+  level: debug
+  db_log: true # 打印数据库日志，false则只会打印数据库错误日志
+
+#  file: ./gogetit.log
+
+pgsql:
+  host: localhost
+  port: 5432
+  user: gogetit
+  password: gogetit
+  dbname: gogetit
