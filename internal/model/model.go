@@ -3,7 +3,7 @@ package model
 import (
 	"fmt"
 	"github.com/jinzhu/gorm"
-	_ "github.com/jinzhu/gorm/dialects/postgres"
+	_ "github.com/jinzhu/gorm/dialects/sqlite"
 	"github.com/wesleywxie/gogetit/internal/config"
 	"github.com/wesleywxie/gogetit/internal/log"
 	"go.uber.org/zap"
@@ -24,16 +24,8 @@ func connectDB() {
 		return
 	}
 
-	dsn := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=disable",
-		config.DBHost,
-		config.DBPort,
-		config.DBUser,
-		config.DBPass,
-		config.DBName,
-	)
-
 	var err error
-	db, err = gorm.Open("postgres", dsn)
+	db, err = gorm.Open("sqlite3", config.SQLitePath)
 	if err != nil {
 		zap.S().Fatalf("connect db failed, err: %+v", err)
 	}

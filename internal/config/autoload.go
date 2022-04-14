@@ -53,11 +53,7 @@ func init() {
 		UserAgent = viper.GetString("user_agent")
 	}
 
-	DBHost = GetString("pgsql.host")
-	DBPort = GetInt("pgsql.port")
-	DBUser = GetString("pgsql.user")
-	DBPass = GetString("pgsql.password")
-	DBName = GetString("pgsql.dbname")
+	SQLitePath = GetString("sqlite.path")
 }
 
 func isInTests() bool {

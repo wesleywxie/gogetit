@@ -27,6 +27,7 @@ require (
 	github.com/kennygrant/sanitize v1.2.4 // indirect
 	github.com/lib/pq v1.10.2 // indirect
 	github.com/magiconair/properties v1.8.6 // indirect
+	github.com/mattn/go-sqlite3 v1.14.0 // indirect
 	github.com/mitchellh/mapstructure v1.4.3 // indirect
 	github.com/pelletier/go-toml v1.9.4 // indirect
 	github.com/pelletier/go-toml/v2 v2.0.0-beta.8 // indirect
