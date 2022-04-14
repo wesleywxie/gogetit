@@ -6,6 +6,7 @@ import (
 	"github.com/wesleywxie/gogetit/internal/config"
 	"github.com/wesleywxie/gogetit/internal/log"
 	"github.com/wesleywxie/gogetit/internal/model"
+	"github.com/wesleywxie/gogetit/internal/util"
 	"go.uber.org/atomic"
 	"go.uber.org/zap"
 	"io/ioutil"
@@ -130,15 +131,23 @@ func (t *JavDBCrawler) Start() {
 
 		e.ForEach("#magnets-content > table > tbody > tr", func(_ int, el *colly.HTMLElement) {
 			t := model.Torrent{}
-			t.Magnet = el.ChildAttr(".magnet-name > a", "href")
+			t.MagnetLink = strings.Split(el.ChildAttr(".magnet-name > a", "href"), "&")[0]
 			metas := strings.Split(reg.FindAllString(el.ChildText(".meta"), -1)[0], ",")
 			if len(metas) > 0 {
-				t.Size = strings.TrimSpace(strings.Trim(strings.Trim(metas[0], "("), ")"))
+				size := strings.TrimSpace(strings.Trim(strings.Trim(metas[0], "("), ")"))
+				unit := size[len(size)-2:]
+				multiplier := 1
+				if strings.ToUpper(unit) == "GB" {
+					multiplier = 1024
+				}
+				t.FileSize = int(util.ExtractFloat(size) * float64(multiplier))
+
 				if len(metas) > 1 {
-					t.Num = strings.TrimSpace(strings.Trim(strings.Trim(metas[1], "("), ")"))
+					num := strings.TrimSpace(strings.Trim(strings.Trim(metas[1], "("), ")"))
+					t.FileNum = util.ExtractInt(num)
 				}
 			}
-			t.PublishedAt = el.ChildText(".time")
+			t.PublishedAt, _ = util.ParseTime(el.ChildText(".time"))
 			t.VideoID = video.ID
 			model.AddTorrent(&t)
 		})
