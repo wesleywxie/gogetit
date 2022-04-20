@@ -11,6 +11,7 @@ var (
 type Task interface {
 	Start()
 	Stop()
+	IsStopped() bool
 	Name() string
 }
 

@@ -34,6 +34,9 @@ func NewJavDBCrawler() *JavDBCrawler {
 func (t *JavDBCrawler) Name() string {
 	return "JavDBCrawler"
 }
+func (t *JavDBCrawler) IsStopped() bool {
+	return t.isStop.Load()
+}
 
 // Stop 停止
 func (t *JavDBCrawler) Stop() {
@@ -44,54 +47,58 @@ func (t *JavDBCrawler) Stop() {
 func (t *JavDBCrawler) Start() {
 	t.isStop.Store(false)
 
-	// Instantiate default collector
-	collector := createCollector()
-	detailCollector := collector.Clone()
+	go func() {
+		// Instantiate default collector
+		collector := createCollector()
+		detailCollector := collector.Clone()
 
-	// Before making a request print "Visiting ..."
-	collector.OnRequest(func(r *colly.Request) {
-		if t.isStop.Load() == true {
-			r.Abort()
+		// Before making a request print "Visiting ..."
+		collector.OnRequest(func(r *colly.Request) {
+			if t.isStop.Load() == true {
+				r.Abort()
+			}
+		})
+
+		collector.OnHTML(".grid-item", func(e *colly.HTMLElement) {
+			UID := e.ChildText(".uid")
+			URL := e.Request.AbsoluteURL(e.ChildAttr("a[class=box]", "href"))
+
+			if !model.ExistsVideo(UID) {
+				_ = detailCollector.Visit(URL)
+				detailCollector.Wait()
+			}
+		})
+
+		// Set error handler
+		collector.OnError(func(r *colly.Response, err error) {
+			zap.S().Errorf("Request URL: %s failed with response: %v\nError:%v", r.Request.URL, r, err)
+		})
+
+		// Before making a request print "Visiting ..."
+		detailCollector.OnRequest(func(r *colly.Request) {
+			if t.isStop.Load() == true {
+				r.Abort()
+			}
+		})
+
+		detailCollector.OnHTML(".section .container", func(e *colly.HTMLElement) {
+			video := parseVideo(e)
+			parseTorrent(video, e)
+
+		})
+		detailCollector.OnError(func(r *colly.Response, err error) {
+			zap.S().Errorf("Request URL: %s failed with response: %v\nError:%v", r.Request.URL, r, err)
+		})
+
+		url := "https://javdb.com/censored?page=%d"
+		for i := 1; i < 2; i++ {
+			_ = collector.Visit(fmt.Sprintf(url, i))
 		}
-	})
 
-	collector.OnHTML(".grid-item", func(e *colly.HTMLElement) {
-		UID := e.ChildText(".uid")
-		URL := e.Request.AbsoluteURL(e.ChildAttr("a[class=box]", "href"))
+		collector.Wait()
 
-		if !model.ExistsVideo(UID) {
-			_ = detailCollector.Visit(URL)
-			detailCollector.Wait()
-		}
-	})
-
-	// Set error handler
-	collector.OnError(func(r *colly.Response, err error) {
-		zap.S().Errorf("Request URL: %s failed with response: %v\nError:%v", r.Request.URL, r, err)
-	})
-
-	// Before making a request print "Visiting ..."
-	detailCollector.OnRequest(func(r *colly.Request) {
-		if t.isStop.Load() == true {
-			r.Abort()
-		}
-	})
-
-	detailCollector.OnHTML(".section .container", func(e *colly.HTMLElement) {
-		video := parseVideo(e)
-		parseTorrent(video, e)
-
-	})
-	detailCollector.OnError(func(r *colly.Response, err error) {
-		zap.S().Errorf("Request URL: %s failed with response: %v\nError:%v", r.Request.URL, r, err)
-	})
-
-	url := "https://javdb.com/censored?page=%d"
-	for i := 1; i < 2; i++ {
-		_ = collector.Visit(fmt.Sprintf(url, i))
-	}
-
-	collector.Wait()
+		t.Stop()
+	}()
 }
 
 func createCollector() *colly.Collector {
