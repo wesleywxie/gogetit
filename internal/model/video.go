@@ -23,7 +23,7 @@ func ExistsVideo(UID string) bool {
 	var video Video
 	err := db.Where("uid=?", UID).First(&video).Error
 
-	if err.Error() == "record not found" || video.UID == "" {
+	if (err != nil && err.Error() == "record not found") || video.UID == "" {
 		return false
 	}
 

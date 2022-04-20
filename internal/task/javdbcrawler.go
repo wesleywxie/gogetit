@@ -9,9 +9,6 @@ import (
 	"github.com/wesleywxie/gogetit/internal/util"
 	"go.uber.org/atomic"
 	"go.uber.org/zap"
-	"io/ioutil"
-	"net/http"
-	"regexp"
 	"strings"
 	"time"
 )
@@ -47,7 +44,57 @@ func (t *JavDBCrawler) Stop() {
 func (t *JavDBCrawler) Start() {
 	t.isStop.Store(false)
 
-	url := "https://javdb.com/censored"
+	// Instantiate default collector
+	collector := createCollector()
+	detailCollector := collector.Clone()
+
+	// Before making a request print "Visiting ..."
+	collector.OnRequest(func(r *colly.Request) {
+		if t.isStop.Load() == true {
+			r.Abort()
+		}
+	})
+
+	collector.OnHTML(".grid-item", func(e *colly.HTMLElement) {
+		UID := e.ChildText(".uid")
+		URL := e.Request.AbsoluteURL(e.ChildAttr("a[class=box]", "href"))
+
+		if !model.ExistsVideo(UID) {
+			_ = detailCollector.Visit(URL)
+			detailCollector.Wait()
+		}
+	})
+
+	// Set error handler
+	collector.OnError(func(r *colly.Response, err error) {
+		zap.S().Errorf("Request URL: %s failed with response: %v\nError:%v", r.Request.URL, r, err)
+	})
+
+	// Before making a request print "Visiting ..."
+	detailCollector.OnRequest(func(r *colly.Request) {
+		if t.isStop.Load() == true {
+			r.Abort()
+		}
+	})
+
+	detailCollector.OnHTML(".section .container", func(e *colly.HTMLElement) {
+		video := parseVideo(e)
+		parseTorrent(video, e)
+
+	})
+	detailCollector.OnError(func(r *colly.Response, err error) {
+		zap.S().Errorf("Request URL: %s failed with response: %v\nError:%v", r.Request.URL, r, err)
+	})
+
+	url := "https://javdb.com/censored?page=%d"
+	for i := 1; i < 2; i++ {
+		_ = collector.Visit(fmt.Sprintf(url, i))
+	}
+
+	collector.Wait()
+}
+
+func createCollector() *colly.Collector {
 	// Instantiate default collector
 	collector := colly.NewCollector(
 		// Visit only domains: reddit.com
@@ -59,7 +106,7 @@ func (t *JavDBCrawler) Start() {
 	)
 
 	// Set max Parallelism and introduce a Random Delay
-	collector.Limit(&colly.LimitRule{
+	_ = collector.Limit(&colly.LimitRule{
 		DomainGlob:  "*javdb.*",
 		Parallelism: 1,
 		Delay:       5 * time.Second,
@@ -71,125 +118,63 @@ func (t *JavDBCrawler) Start() {
 			zap.S().Fatalw("Error when initializing proxy",
 				"error", err,
 			)
-			return
 		}
 	}
 
-	detailCollector := collector.Clone()
-
-	collector.OnHTML(".grid-item", func(e *colly.HTMLElement) {
-		UID := e.ChildText(".uid")
-		URL := e.Request.AbsoluteURL(e.ChildAttr("a[class=box]", "href"))
-
-		if !model.ExistsVideo(UID) {
-			detailCollector.Visit(URL)
-			detailCollector.Wait()
-		}
-	})
-
-	// Before making a request print "Visiting ..."
-	collector.OnRequest(func(r *colly.Request) {
-		if t.isStop.Load() == true {
-			r.Abort()
-		}
-	})
-
-	// Set error handler
-	collector.OnError(func(r *colly.Response, err error) {
-		zap.S().Errorf("Request URL: %s failed with response: %v\nError:%v", r.Request.URL, r, err)
-	})
-
-	detailCollector.OnHTML(".section .container", func(e *colly.HTMLElement) {
-		video := model.Video{}
-
-		e.ForEach(".video-meta-panel .movie-panel-info .panel-block", func(_ int, el *colly.HTMLElement) {
-			label := strings.TrimSpace(el.ChildText("strong:nth-child(1)"))
-			switch label {
-			case "番號:":
-				video.UID = el.ChildText("span")
-			case "日期:":
-				video.PublishedAt = el.ChildText("span")
-			case "時長:":
-				video.Duration = el.ChildText("span")
-			case "導演:":
-				video.Director = el.ChildText("span")
-			case "片商:":
-				video.Publisher = el.ChildText("span")
-			case "系列:":
-				video.Series = el.ChildText("span")
-			case "類別:":
-				video.Categories = el.ChildText("span")
-			case "演員:":
-				video.Actors = el.ChildText("span")
-			}
-		})
-
-		video.Source = "JavDB"
-		video, _ = model.AddVideo(&video)
-
-		reg := regexp.MustCompile(`\((.*?)\)`)
-
-		e.ForEach("#magnets-content > table > tbody > tr", func(_ int, el *colly.HTMLElement) {
-			t := model.Torrent{}
-			t.MagnetLink = strings.Split(el.ChildAttr(".magnet-name > a", "href"), "&")[0]
-			metas := strings.Split(reg.FindAllString(el.ChildText(".meta"), -1)[0], ",")
-			if len(metas) > 0 {
-				size := strings.TrimSpace(strings.Trim(strings.Trim(metas[0], "("), ")"))
-				unit := size[len(size)-2:]
-				multiplier := 1
-				if strings.ToUpper(unit) == "GB" {
-					multiplier = 1024
-				}
-				t.FileSize = int(util.ExtractFloat(size) * float64(multiplier))
-
-				if len(metas) > 1 {
-					num := strings.TrimSpace(strings.Trim(strings.Trim(metas[1], "("), ")"))
-					t.FileNum = util.ExtractInt(num)
-				}
-			}
-			t.PublishedAt, _ = util.ParseTime(el.ChildText(".time"))
-			t.VideoID = video.ID
-			model.AddTorrent(&t)
-		})
-
-	})
-
-	// Before making a request print "Visiting ..."
-	detailCollector.OnRequest(func(r *colly.Request) {
-		if t.isStop.Load() == true {
-			r.Abort()
-		}
-	})
-
-	detailCollector.OnError(func(r *colly.Response, err error) {
-		zap.S().Errorf("Request URL: %s failed with response: %v\nError:%v", r.Request.URL, r, err)
-	})
-
-	collector.Visit(url)
-	collector.Wait()
+	return collector
 }
 
-func makeGetRequest(url string) (content string, err error) {
-	client := &http.Client{}
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		zap.S().Error(err)
-		return
-	}
-	req.Header.Set("User-Agent", config.UserAgent)
-	resp, err := client.Do(req)
-	if err != nil {
-		zap.S().Error(err)
-		return
-	}
+func parseVideo(e *colly.HTMLElement) model.Video {
+	video := model.Video{}
 
-	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		zap.S().Error(err)
-		return
-	}
+	e.ForEach(".video-meta-panel .movie-panel-info .panel-block", func(_ int, el *colly.HTMLElement) {
+		label := strings.TrimSpace(el.ChildText("strong:nth-child(1)"))
+		switch label {
+		case "番號:":
+			video.UID = el.ChildText("span")
+		case "日期:":
+			video.PublishedAt = el.ChildText("span")
+		case "時長:":
+			video.Duration = el.ChildText("span")
+		case "導演:":
+			video.Director = el.ChildText("span")
+		case "片商:":
+			video.Publisher = el.ChildText("span")
+		case "系列:":
+			video.Series = el.ChildText("span")
+		case "類別:":
+			video.Categories = el.ChildText("span")
+		case "演員:":
+			video.Actors = el.ChildText("span")
+		}
+	})
 
-	content = string(body)
-	return
+	video.Source = "JavDB"
+	video, _ = model.AddVideo(&video)
+	return video
+}
+
+func parseTorrent(video model.Video, e *colly.HTMLElement) {
+	e.ForEach("#magnets-content > .item", func(_ int, el *colly.HTMLElement) {
+		t := model.Torrent{}
+		t.MagnetLink = strings.Split(el.ChildAttr(".magnet-name > a", "href"), "&")[0]
+		metas := strings.Split(el.ChildText(".meta"), ",")
+		if len(metas) > 0 {
+			size := strings.TrimSpace(strings.Trim(strings.Trim(metas[0], "("), ")"))
+			unit := size[len(size)-2:]
+			multiplier := 1
+			if strings.ToUpper(unit) == "GB" {
+				multiplier = 1024
+			}
+			t.FileSize = int(util.ExtractFloat(size) * float64(multiplier))
+
+			if len(metas) > 1 {
+				num := strings.TrimSpace(strings.Trim(strings.Trim(metas[1], "("), ")"))
+				t.FileNum = util.ExtractInt(num)
+			}
+		}
+		t.PublishedAt, _ = util.ParseTime(el.ChildText(".time"))
+		t.VideoID = video.ID
+		model.AddTorrent(&t)
+	})
 }
