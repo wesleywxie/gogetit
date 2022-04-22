@@ -26,6 +26,9 @@ var (
 	UpdateInterval      = 60
 	UpdateIntervalDelta = 10
 
+	Username = "admin"
+	Password = "password"
+
 	SQLitePath string
 )
 

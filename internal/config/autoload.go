@@ -55,6 +55,10 @@ func init() {
 
 	UpdateInterval = GetInt("task.update_interval")
 	UpdateIntervalDelta = GetInt("task.update_interval_delta")
+
+	Username = GetString("auth.username")
+	Password = GetString("auth.password")
+
 	SQLitePath = GetString("sqlite.path")
 }
 

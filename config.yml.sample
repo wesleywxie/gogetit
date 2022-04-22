@@ -1,6 +1,11 @@
 socks5: SOCK5_PROXY,REMOVE_IF_YOU_DONT_NEED
 user_agent: USER_AGENT
 
+
+auth:
+  username: admin
+  password: password
+
 task:
   update_interval: 60
   update_interval_delta: 10

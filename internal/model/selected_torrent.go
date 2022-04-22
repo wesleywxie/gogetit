@@ -14,6 +14,7 @@ type SelectedTorrent struct {
 	MagnetLink  string
 	FileSize    int
 	FileNum     int
+	Status      Status
 	PublishedAt time.Time
 }
 
@@ -29,10 +30,18 @@ func AddSelectedTorrent(v *Video, t *Torrent) (selectedTorrent SelectedTorrent, 
 			selectedTorrent.PublishedAt = t.PublishedAt
 			selectedTorrent.CreatedAt = time.Now()
 			selectedTorrent.UpdatedAt = time.Now()
+			selectedTorrent.Status = INIT
 			if db.Create(&selectedTorrent).Error == nil {
 				return selectedTorrent, nil
 			}
 		}
 	}
 	return
+}
+
+func FindAndUpdateSelectedTorrents() []SelectedTorrent {
+	var torrents []SelectedTorrent
+	db.Where("status=?", INIT).Order("created_at desc").Find(&torrents)
+	db.Table("selected_torrents").Where("status = ?", INIT).Updates(map[string]interface{}{"status": COMPLETED, "updated_at": time.Now()})
+	return torrents
 }
