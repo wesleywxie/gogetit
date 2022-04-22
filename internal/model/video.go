@@ -17,6 +17,7 @@ type Video struct {
 	Torrents    []Torrent
 	PublishedAt string
 	Source      string
+	Status      Status
 }
 
 func ExistsVideo(UID string) bool {
@@ -27,7 +28,24 @@ func ExistsVideo(UID string) bool {
 		return false
 	}
 
+	// If video already processed, no need further process
+	if video.Status == INIT {
+		return false
+	}
+
 	return true
+}
+
+func UpdateStatus(v *Video, newStatus Status) {
+	v.Status = newStatus
+	db.Save(v)
+}
+
+func FindVideosByStatus(status Status) []Video {
+	var videos []Video
+	db.Where("status=?", status).Find(&videos)
+
+	return videos
 }
 
 func AddVideo(v *Video) (video Video, err error) {
@@ -44,6 +62,7 @@ func AddVideo(v *Video) (video Video, err error) {
 			video.Source = v.Source
 			video.CreatedAt = time.Now()
 			video.UpdatedAt = time.Now()
+			video.Status = INIT
 			if db.Create(&video).Error == nil {
 				return video, nil
 			}

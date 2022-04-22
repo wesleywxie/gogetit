@@ -167,7 +167,7 @@ func parseTorrent(video model.Video, e *colly.HTMLElement) {
 		t.MagnetLink = strings.Split(el.ChildAttr(".magnet-name > a", "href"), "&")[0]
 		metas := strings.Split(el.ChildText(".meta"), ",")
 		if len(metas) > 0 {
-			size := strings.TrimSpace(strings.Trim(strings.Trim(metas[0], "("), ")"))
+			size := strings.TrimSpace(metas[0])
 			unit := size[len(size)-2:]
 			multiplier := 1
 			if strings.ToUpper(unit) == "GB" {
@@ -176,12 +176,13 @@ func parseTorrent(video model.Video, e *colly.HTMLElement) {
 			t.FileSize = int(util.ExtractFloat(size) * float64(multiplier))
 
 			if len(metas) > 1 {
-				num := strings.TrimSpace(strings.Trim(strings.Trim(metas[1], "("), ")"))
+				num := strings.TrimSpace(metas[1])
 				t.FileNum = util.ExtractInt(num)
 			}
 		}
 		t.PublishedAt, _ = util.ParseTime(el.ChildText(".time"))
 		t.VideoID = video.ID
+		t.UID = video.UID
 		model.AddTorrent(&t)
 	})
 }

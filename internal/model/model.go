@@ -49,6 +49,7 @@ func configDB() {
 func updateTable() {
 	createOrUpdateTable(&Video{})
 	createOrUpdateTable(&Torrent{})
+	createOrUpdateTable(&SelectedTorrent{})
 }
 
 // createOrUpdateTable create table or Migrate table
