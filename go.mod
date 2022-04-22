@@ -3,7 +3,7 @@ module github.com/wesleywxie/gogetit
 go 1.18
 
 require (
-	github.com/gocolly/colly v1.2.0
+	github.com/gocolly/colly/v2 v2.1.0
 	github.com/jinzhu/gorm v1.9.16
 	github.com/spf13/viper v1.11.0
 	go.uber.org/atomic v1.7.0

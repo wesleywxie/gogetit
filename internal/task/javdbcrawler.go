@@ -2,13 +2,15 @@ package task
 
 import (
 	"fmt"
-	"github.com/gocolly/colly"
+	"github.com/gocolly/colly/v2"
 	"github.com/wesleywxie/gogetit/internal/config"
 	"github.com/wesleywxie/gogetit/internal/log"
 	"github.com/wesleywxie/gogetit/internal/model"
 	"github.com/wesleywxie/gogetit/internal/util"
 	"go.uber.org/atomic"
 	"go.uber.org/zap"
+	"net"
+	"net/http"
 	"strings"
 	"time"
 )
@@ -48,56 +50,61 @@ func (t *JavDBCrawler) Start() {
 	t.isStop.Store(false)
 
 	go func() {
-		// Instantiate default collector
-		collector := createCollector()
-		detailCollector := collector.Clone()
-
-		// Before making a request print "Visiting ..."
-		collector.OnRequest(func(r *colly.Request) {
+		for {
 			if t.isStop.Load() == true {
-				r.Abort()
+				zap.S().Infof("%s stopped", t.Name())
+				return
 			}
-		})
+			// Instantiate default collector
+			collector := createCollector()
+			detailCollector := collector.Clone()
 
-		collector.OnHTML(".grid-item", func(e *colly.HTMLElement) {
-			UID := e.ChildText(".uid")
-			URL := e.Request.AbsoluteURL(e.ChildAttr("a[class=box]", "href"))
+			// Before making a request print "Visiting ..."
+			collector.OnRequest(func(r *colly.Request) {
+				if t.isStop.Load() == true {
+					r.Abort()
+				}
+			})
 
-			if !model.ExistsVideo(UID) {
-				_ = detailCollector.Visit(URL)
-				detailCollector.Wait()
+			collector.OnHTML(".grid-item", func(e *colly.HTMLElement) {
+				UID := e.ChildText(".uid")
+				URL := e.Request.AbsoluteURL(e.ChildAttr("a[class=box]", "href"))
+
+				if !model.ExistsVideo(UID) {
+					_ = detailCollector.Visit(URL)
+					detailCollector.Wait()
+				}
+			})
+
+			// Set error handler
+			collector.OnError(func(r *colly.Response, err error) {
+				zap.S().Errorf("Request URL: %s failed with response: %v\nError:%v", r.Request.URL, r, err)
+			})
+
+			// Before making a request print "Visiting ..."
+			detailCollector.OnRequest(func(r *colly.Request) {
+				if t.isStop.Load() == true {
+					r.Abort()
+				}
+			})
+
+			detailCollector.OnHTML(".section .container", func(e *colly.HTMLElement) {
+				video := parseVideo(e)
+				parseTorrent(video, e)
+
+			})
+			detailCollector.OnError(func(r *colly.Response, err error) {
+				zap.S().Errorf("Request URL: %s failed with response: %v\nError:%v", r.Request.URL, r, err)
+			})
+
+			url := "https://javdb.com/censored?page=%d"
+			for i := 1; i < 6; i++ {
+				_ = collector.Visit(fmt.Sprintf(url, i))
+				collector.Wait()
 			}
-		})
 
-		// Set error handler
-		collector.OnError(func(r *colly.Response, err error) {
-			zap.S().Errorf("Request URL: %s failed with response: %v\nError:%v", r.Request.URL, r, err)
-		})
-
-		// Before making a request print "Visiting ..."
-		detailCollector.OnRequest(func(r *colly.Request) {
-			if t.isStop.Load() == true {
-				r.Abort()
-			}
-		})
-
-		detailCollector.OnHTML(".section .container", func(e *colly.HTMLElement) {
-			video := parseVideo(e)
-			parseTorrent(video, e)
-
-		})
-		detailCollector.OnError(func(r *colly.Response, err error) {
-			zap.S().Errorf("Request URL: %s failed with response: %v\nError:%v", r.Request.URL, r, err)
-		})
-
-		url := "https://javdb.com/censored?page=%d"
-		for i := 1; i < 2; i++ {
-			_ = collector.Visit(fmt.Sprintf(url, i))
+			time.Sleep(time.Duration(config.UpdateInterval) * time.Minute)
 		}
-
-		collector.Wait()
-
-		t.Stop()
 	}()
 }
 
@@ -107,7 +114,7 @@ func createCollector() *colly.Collector {
 		// Visit only domains: reddit.com
 		colly.AllowedDomains("javdb.com"),
 		colly.MaxDepth(2), // only allow list and detail pages
-		colly.Async(true),
+		colly.Async(false),
 		colly.UserAgent(config.UserAgent),
 		colly.Debugger(&log.Debugger{}),
 	)
@@ -116,16 +123,27 @@ func createCollector() *colly.Collector {
 	_ = collector.Limit(&colly.LimitRule{
 		DomainGlob:  "*javdb.*",
 		Parallelism: 1,
-		Delay:       5 * time.Second,
+		Delay:       2 * time.Second,
 	})
 
 	if config.Socks5 != "" {
-		err := collector.SetProxy(fmt.Sprintf("socks5://%s", config.Socks5))
-		if err != nil {
-			zap.S().Fatalw("Error when initializing proxy",
-				"error", err,
-			)
-		}
+		collector.WithTransport(&http.Transport{
+			Proxy: http.ProxyFromEnvironment,
+			DialContext: (&net.Dialer{
+				Timeout:   30 * time.Second,
+				KeepAlive: 30 * time.Second,
+			}).DialContext,
+			MaxIdleConns:          100,
+			IdleConnTimeout:       90 * time.Second,
+			TLSHandshakeTimeout:   10 * time.Second,
+			ExpectContinueTimeout: 1 * time.Second,
+		})
+		//err := collector.SetProxy(fmt.Sprintf("socks5://%s", config.Socks5))
+		//if err != nil {
+		//	zap.S().Fatalw("Error when initializing proxy",
+		//		"error", err,
+		//	)
+		//}
 	}
 
 	return collector
@@ -166,7 +184,7 @@ func parseTorrent(video model.Video, e *colly.HTMLElement) {
 		t := model.Torrent{}
 		t.MagnetLink = strings.Split(el.ChildAttr(".magnet-name > a", "href"), "&")[0]
 		metas := strings.Split(el.ChildText(".meta"), ",")
-		if len(metas) > 0 {
+		if len(metas) > 0 && len(metas[0]) > 0 {
 			size := strings.TrimSpace(metas[0])
 			unit := size[len(size)-2:]
 			multiplier := 1
@@ -183,6 +201,6 @@ func parseTorrent(video model.Video, e *colly.HTMLElement) {
 		t.PublishedAt, _ = util.ParseTime(el.ChildText(".time"))
 		t.VideoID = video.ID
 		t.UID = video.UID
-		model.AddTorrent(&t)
+		_, _ = model.AddTorrent(&t)
 	})
 }

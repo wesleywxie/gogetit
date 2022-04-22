@@ -1,6 +1,7 @@
 package task
 
 import (
+	"github.com/wesleywxie/gogetit/internal/config"
 	"github.com/wesleywxie/gogetit/internal/model"
 	"go.uber.org/atomic"
 	"go.uber.org/zap"
@@ -43,39 +44,31 @@ func (t *Aggregator) Stop() {
 func (t *Aggregator) Start() {
 	t.isStop.Store(false)
 	go func() {
-		taskCompletedCount := 0
-		for taskCompletedCount < (len(taskList) - 1) {
-			// sleep for 1 second to allow all other tasks to start running
-			time.Sleep(1 * time.Second)
-			taskCompletedCount = 0
-			for _, task := range taskList {
-				if task.Name() != t.Name() && task.IsStopped() {
-					taskCompletedCount++
+		for {
+			if t.isStop.Load() == true {
+				zap.S().Infof("%s stopped", t.Name())
+				return
+			}
+			time.Sleep(time.Duration(config.UpdateIntervalDelta) * time.Minute)
+
+			zap.S().Info("Starting video and torrent process... ")
+
+			videos := model.FindVideosByStatus(model.INIT)
+			for _, video := range videos {
+				if strings.Contains(video.Categories, "VR,") {
+					model.UpdateStatus(&video, model.SKIPPED)
+					continue
+				}
+				torrent := model.PickTop(&video)
+				if torrent.ID > 0 {
+					selectedTorrent, _ := model.AddSelectedTorrent(&video, &torrent)
+					zap.S().Infof("Found top pick torrent for %v with magnet link %v",
+						selectedTorrent.UID, selectedTorrent.MagnetLink)
+					model.UpdateStatus(&video, model.COMPLETED)
 				}
 			}
-		}
 
-		// If all other tasks are completed
-		processVideoAndTorrent()
-		t.Stop()
+			time.Sleep(time.Duration(config.UpdateInterval) * time.Minute)
+		}
 	}()
-}
-
-func processVideoAndTorrent() {
-	zap.S().Info("Starting video and torrent process... ")
-
-	videos := model.FindVideosByStatus(model.INIT)
-	for _, video := range videos {
-		if strings.Contains(video.Categories, "VR,") {
-			model.UpdateStatus(&video, model.SKIPPED)
-			continue
-		}
-		torrent := model.PickTop(&video)
-		if torrent.ID > 0 {
-			selectedTorrent, _ := model.AddSelectedTorrent(&video, &torrent)
-			zap.S().Infof("Found top pick torrent for %v with magnet link %v",
-				selectedTorrent.UID, selectedTorrent.MagnetLink)
-		}
-		model.UpdateStatus(&video, model.COMPLETED)
-	}
 }

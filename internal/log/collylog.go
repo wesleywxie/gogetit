@@ -1,7 +1,7 @@
 package log
 
 import (
-	"github.com/gocolly/colly/debug"
+	"github.com/gocolly/colly/v2/debug"
 	"go.uber.org/zap"
 )
 

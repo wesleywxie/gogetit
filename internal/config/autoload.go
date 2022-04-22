@@ -53,6 +53,8 @@ func init() {
 		UserAgent = viper.GetString("user_agent")
 	}
 
+	UpdateInterval = GetInt("task.update_interval")
+	UpdateIntervalDelta = GetInt("task.update_interval_delta")
 	SQLitePath = GetString("sqlite.path")
 }
 
