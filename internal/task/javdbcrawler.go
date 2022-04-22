@@ -9,6 +9,8 @@ import (
 	"github.com/wesleywxie/gogetit/internal/util"
 	"go.uber.org/atomic"
 	"go.uber.org/zap"
+	"golang.org/x/net/context"
+	"golang.org/x/net/proxy"
 	"net"
 	"net/http"
 	"strings"
@@ -126,24 +128,21 @@ func createCollector() *colly.Collector {
 		Delay:       2 * time.Second,
 	})
 
-	if config.Socks5 != "" {
+	if len(config.Socks5) > 0 {
+		dialContext, err := newDialContext(config.Socks5)
+		if err != nil {
+			zap.S().Errorw("Error when initializing proxy", "error", err)
+			return nil
+		}
+
 		collector.WithTransport(&http.Transport{
-			Proxy: http.ProxyFromEnvironment,
-			DialContext: (&net.Dialer{
-				Timeout:   30 * time.Second,
-				KeepAlive: 30 * time.Second,
-			}).DialContext,
+			Proxy:                 http.ProxyFromEnvironment,
+			DialContext:           dialContext,
 			MaxIdleConns:          100,
 			IdleConnTimeout:       90 * time.Second,
 			TLSHandshakeTimeout:   10 * time.Second,
 			ExpectContinueTimeout: 1 * time.Second,
 		})
-		//err := collector.SetProxy(fmt.Sprintf("socks5://%s", config.Socks5))
-		//if err != nil {
-		//	zap.S().Fatalw("Error when initializing proxy",
-		//		"error", err,
-		//	)
-		//}
 	}
 
 	return collector
@@ -203,4 +202,29 @@ func parseTorrent(video model.Video, e *colly.HTMLElement) {
 		t.UID = video.UID
 		_, _ = model.AddTorrent(&t)
 	})
+}
+
+type dialContextFunc func(ctx context.Context, network, address string) (net.Conn, error)
+
+func newDialContext(socks5 string) (dialContextFunc, error) {
+	baseDialer := &net.Dialer{
+		Timeout:   30 * time.Second,
+		KeepAlive: 30 * time.Second,
+	}
+
+	if socks5 != "" {
+		dialSocksProxy, err := proxy.SOCKS5("tcp", socks5, nil, baseDialer)
+		if err != nil {
+			return nil, err
+		}
+
+		contextDialer, ok := dialSocksProxy.(proxy.ContextDialer)
+		if !ok {
+			return nil, err
+		}
+
+		return contextDialer.DialContext, nil
+	} else {
+		return baseDialer.DialContext, nil
+	}
 }
