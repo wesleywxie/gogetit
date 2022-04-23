@@ -60,7 +60,7 @@ func startWebServer() {
 }
 
 func torrentsHandler(w http.ResponseWriter, r *http.Request) {
-	t := template.Must(template.ParseFiles("./tmpl/torrents.html"))
+	t := template.Must(template.ParseFiles("./static/tmpl/torrents.html"))
 	torrents := model.FindAndUpdateSelectedTorrents()
 	t.Execute(w, torrents)
 }
