@@ -8,6 +8,7 @@ require (
 	github.com/spf13/viper v1.11.0
 	go.uber.org/atomic v1.9.0
 	go.uber.org/zap v1.21.0
+	golang.org/x/net v0.0.0-20220412020605-290c469a71a5
 	moul.io/zapgorm v1.1.5
 )
 
@@ -39,7 +40,6 @@ require (
 	github.com/subosito/gotenv v1.2.0 // indirect
 	github.com/temoto/robotstxt v1.1.2 // indirect
 	go.uber.org/multierr v1.6.0 // indirect
-	golang.org/x/net v0.0.0-20220412020605-290c469a71a5 // indirect
 	golang.org/x/sys v0.0.0-20220412211240-33da011f77ad // indirect
 	golang.org/x/text v0.3.7 // indirect
 	google.golang.org/appengine v1.6.7 // indirect
