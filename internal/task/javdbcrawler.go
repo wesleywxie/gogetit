@@ -68,8 +68,8 @@ func (t *JavDBCrawler) Start() {
 				}
 			})
 
-			collector.OnHTML(".grid-item", func(e *colly.HTMLElement) {
-				UID := e.ChildText(".uid")
+			collector.OnHTML(".item", func(e *colly.HTMLElement) {
+				UID := e.ChildText(".video-title > strong")
 				URL := e.Request.AbsoluteURL(e.ChildAttr("a[class=box]", "href"))
 
 				if !model.ExistsVideo(UID) {
