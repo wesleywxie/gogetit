@@ -39,9 +39,11 @@ func AddSelectedTorrent(v *Video, t *Torrent) (selectedTorrent SelectedTorrent, 
 	return
 }
 
-func FindAndUpdateSelectedTorrents() []SelectedTorrent {
+func FindAndUpdateSelectedTorrents(update bool) []SelectedTorrent {
 	var torrents []SelectedTorrent
 	db.Where("status=?", INIT).Order("created_at desc").Find(&torrents)
-	db.Table("selected_torrents").Where("status = ?", INIT).Updates(map[string]interface{}{"status": COMPLETED, "updated_at": time.Now()})
+	if update {
+		db.Table("selected_torrents").Where("status = ?", INIT).Updates(map[string]interface{}{"status": COMPLETED, "updated_at": time.Now()})
+	}
 	return torrents
 }
