@@ -17,7 +17,7 @@ type Torrent struct {
 
 func PickTop(v *Video) Torrent {
 	var torrent Torrent
-	db.Where("video_id=? AND file_num > 0 AND file_num < 5 AND published_at > date('now', 'start of day','-1 months') ", v.ID).
+	db.Where("video_id=? AND file_num > 0 AND file_num < 10 AND published_at > date('now', 'start of day','-1 months') ", v.ID).
 		Order("file_size").
 		First(&torrent)
 	return torrent

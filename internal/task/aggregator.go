@@ -55,7 +55,7 @@ func (t *Aggregator) Start() {
 
 			videos := model.FindVideosByStatus(model.INIT)
 			for _, video := range videos {
-				if strings.Contains(video.Categories, "VR,") {
+				if strings.Contains(video.Categories, "VR") {
 					model.UpdateStatus(&video, model.SKIPPED)
 					continue
 				}
